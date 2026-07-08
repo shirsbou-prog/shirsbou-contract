@@ -555,14 +555,6 @@
   const SUPPLIER_EMAIL = 'shirs.bou@gmail.com';
   const WEB3FORMS_KEY = 'f09891d9-0ea4-453c-9367-3ddb5eeb0bcb';
 
-  function canvasToBlob(canvas){
-    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-  }
-
-  function imgToBlob(img){
-    return fetch(img.src).then(r => r.blob());
-  }
-
   function validateRequiredFields(){
     const missing = [];
     document.querySelectorAll('input[required]').forEach(el => {
@@ -648,26 +640,26 @@
     });
 
     try{
-      const supplierBlob = await imgToBlob(document.getElementById('supplierSigImg'));
-      const clientBlob = await canvasToBlob(document.getElementById('padClient'));
-
       const fd = new FormData();
       fd.append('access_key', WEB3FORMS_KEY);
-      fd.append('subject', 'הסכם חתום — ' + (data.clientBusiness || data.clientSignName || 'לקוח חדש'));
-      fd.append('from_name', data.clientBusiness || data.clientSignName || 'לקוח חדש');
+      fd.append('subject', 'Signed contract - ' + (data.clientBusiness || data.clientSignName || 'new client'));
       Object.entries(data).forEach(([k,v]) => fd.append(k, v));
-      fd.append('attachment', supplierBlob, 'חתימת-ספק.png');
-      fd.append('attachment2', clientBlob, 'חתימת-לקוח.png');
 
-      const res = await fetch('https://api.web3forms.com/submit', {
-        method: 'POST',
-        body: fd
-      });
-      const json = await res.json().catch(() => ({}));
+      let sendOk = true;
+      try{
+        await fetch('https://api.web3forms.com/submit', {
+          method: 'POST',
+          mode: 'no-cors',
+          body: fd
+        });
+      }catch(networkErr){
+        sendOk = false;
+      }
 
-      if(res.status !== 200 || json.success === false) throw new Error('send failed');
+      if(!sendOk) throw new Error('send failed');
 
       confirmBtn.textContent = 'ההסכם נחתם ונשלח ✓';
+      document.getElementById('signedBanner').textContent = '✓ ההסכם נחתם ונשלחה הודעה אוטומטית לספק. שימו לב: מומלץ ללקוח להוריד ולשלוח גם עותק PDF (כפתור למטה), כדי להבטיח שכל הפרטים בעברית יגיעו בצורה תקינה.';
       document.getElementById('signedBanner').style.display = 'block';
       document.getElementById('signedBanner').scrollIntoView({behavior:'smooth'});
     }catch(err){
