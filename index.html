@@ -470,7 +470,7 @@
     <button class="btn btn-primary" id="confirmBtn">אשר, חתום ושלח לספק</button>
     <button class="btn btn-secondary" id="printBtn">הורד / הדפס כ-PDF</button>
   </div>
-  <div class="status-banner">לאחר החתימה, קובץ חתימת הלקוח יורד אוטומטית ותיפתח הודעת מייל מוכנה לשיר'ס בוטיק קונדיטוריה — יש לצרף את קובץ החתימה (ומומלץ גם PDF של ההסכם) ולשלוח.</div>
+  <div class="status-banner">לאחר החתימה ההסכם יישלח אוטומטית במייל לשיר'ס בוטיק קונדיטוריה. מומלץ גם לשמור/להדפיס עותק PDF לעצמך.</div>
 
   <div class="error-banner" id="errorBanner">
     <strong>יש להשלים את השדות הבאים לפני החתימה:</strong>
@@ -583,45 +583,15 @@
     document.getElementById('errorBanner').style.display = 'none';
   }
 
-  function confirmSign(){
-    hideErrors();
+  function canvasToBlob(canvas){
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  }
 
-    const missing = validateRequiredFields();
+  function imgToBlob(img){
+    return fetch(img.src).then(r => r.blob());
+  }
 
-    const clientOk = document.getElementById('padClient')._hasInk();
-    if(!clientOk) missing.push('חתימת הלקוח');
-
-    if(missing.length){
-      showErrors(missing);
-      return;
-    }
-
-    const confirmBtn = document.getElementById('confirmBtn');
-    confirmBtn.disabled = true;
-    confirmBtn.textContent = 'מכין שליחה...';
-
-    // lock the form
-    document.querySelectorAll('input').forEach(i => i.setAttribute('readonly','readonly'));
-    document.querySelectorAll('.pad').forEach(p => p.style.pointerEvents = 'none');
-
-    // gather all filled-in fields
-    const data = {};
-    document.querySelectorAll('[data-field]').forEach(el => {
-      data[el.dataset.field] = el.value;
-    });
-
-    function downloadDataUrl(dataUrl, filename){
-      const link = document.createElement('a');
-      link.download = filename;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-    }
-
-    // auto-download the client's signature so it's ready to attach to the email
-    downloadDataUrl(document.getElementById('padClient').toDataURL('image/png'), 'חתימת-לקוח.png');
-
+  function openMailtoFallback(data){
     const subject = 'הסכם חתום — ' + (data.clientBusiness || data.clientSignName || 'לקוח חדש');
     const bodyLines = [
       'הסכם מכר ואספקת מוצרי קונדיטוריה — נחתם דיגיטלית',
@@ -636,18 +606,73 @@
       '',
       'חתימה: ' + (data.clientSignName || '') + ', תאריך ' + (data.clientDate || ''),
       '',
-      'שימו לב: קובץ חתימת הלקוח (חתימת-לקוח.png) הורד אוטומטית — נא לצרף אותו להודעה זו, ואת קובץ ה-PDF של ההסכם המלא (הורידי אותו בכפתור "הורד/הדפס כ-PDF").'
+      'שימו לב: השליחה האוטומטית נכשלה, לכן נפתחה הודעת מייל ידנית. נא לצרף את קובץ חתימת הלקוח שירד, ולשלוח.'
     ];
-    const mailto = 'mailto:' + SUPPLIER_EMAIL +
+    const link = document.createElement('a');
+    link.download = 'חתימת-לקוח.png';
+    link.href = document.getElementById('padClient').toDataURL('image/png');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.location.href = 'mailto:' + SUPPLIER_EMAIL +
       '?subject=' + encodeURIComponent(subject) +
       '&body=' + encodeURIComponent(bodyLines.join('\n'));
+  }
 
-    window.location.href = mailto;
+  async function confirmSign(){
+    hideErrors();
 
-    confirmBtn.textContent = 'ההסכם נחתם ✓ — נפתח לקוח המייל';
-    document.getElementById('signedBanner').textContent = '✓ ההסכם נחתם. קובץ חתימת הלקוח הורד, ולקוח המייל נפתח עם כל הפרטים. נא לצרף את קובץ החתימה (ומומלץ גם PDF של ההסכם) ולשלוח.';
-    document.getElementById('signedBanner').style.display = 'block';
-    document.getElementById('signedBanner').scrollIntoView({behavior:'smooth'});
+    const missing = validateRequiredFields();
+
+    const clientOk = document.getElementById('padClient')._hasInk();
+    if(!clientOk) missing.push('חתימת הלקוח');
+
+    if(missing.length){
+      showErrors(missing);
+      return;
+    }
+
+    const confirmBtn = document.getElementById('confirmBtn');
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'שולח...';
+
+    // lock the form
+    document.querySelectorAll('input').forEach(i => i.setAttribute('readonly','readonly'));
+    document.querySelectorAll('.pad').forEach(p => p.style.pointerEvents = 'none');
+
+    // gather all filled-in fields
+    const data = {};
+    document.querySelectorAll('[data-field]').forEach(el => {
+      data[el.dataset.field] = el.value;
+    });
+
+    try{
+      const supplierBlob = await imgToBlob(document.getElementById('supplierSigImg'));
+      const clientBlob = await canvasToBlob(document.getElementById('padClient'));
+
+      const fd = new FormData();
+      fd.append('_subject', 'הסכם חתום — ' + (data.clientBusiness || data.clientSignName || 'לקוח חדש'));
+      fd.append('_template', 'table');
+      fd.append('_captcha', 'false');
+      Object.entries(data).forEach(([k,v]) => fd.append(k, v));
+      fd.append('attachment-1', supplierBlob, 'חתימת-ספק.png');
+      fd.append('attachment-2', clientBlob, 'חתימת-לקוח.png');
+
+      const res = await fetch('https://formsubmit.co/ajax/' + SUPPLIER_EMAIL, {
+        method: 'POST',
+        body: fd
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if(!res.ok || json.success === 'false' || json.success === false) throw new Error('send failed');
+
+      confirmBtn.textContent = 'ההסכם נחתם ונשלח ✓';
+      document.getElementById('signedBanner').style.display = 'block';
+      document.getElementById('signedBanner').scrollIntoView({behavior:'smooth'});
+    }catch(err){
+      confirmBtn.textContent = 'ההסכם נחתם ✓ — נפתח לקוח המייל';
+      openMailtoFallback(data);
+    }
   }
 </script>
 
