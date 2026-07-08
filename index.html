@@ -482,6 +482,7 @@
   <footer>שיר'ס בוטיק קונדיטוריה &nbsp;·&nbsp; 053-4247937 &nbsp;·&nbsp; shirs.bou@gmail.com</footer>
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
 <script>
   function setupPad(canvasId, statusId){
     const canvas = document.getElementById(canvasId);
@@ -612,6 +613,45 @@
       '&body=' + encodeURIComponent(bodyLines.join('\n'));
   }
 
+  async function generateContractPdf(){
+    const wrap = document.querySelector('.wrap');
+    const toHide = [
+      document.querySelector('.final-actions'),
+      document.querySelector('.status-banner'),
+      document.getElementById('errorBanner'),
+      document.getElementById('signedBanner')
+    ].filter(Boolean);
+    const prevDisplay = toHide.map(el => el.style.display);
+    toHide.forEach(el => el.style.display = 'none');
+
+    try{
+      const worker = html2pdf()
+        .set({
+          margin: 10,
+          filename: 'הסכם-חתום.pdf',
+          html2canvas: { scale: 2, useCORS: true },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        })
+        .from(wrap);
+      const pdfBlob = await worker.outputPdf('blob');
+      return pdfBlob;
+    } finally {
+      toHide.forEach((el, i) => el.style.display = prevDisplay[i]);
+    }
+  }
+
+  async function uploadPdfAndGetLink(pdfBlob){
+    const fd = new FormData();
+    fd.append('file', pdfBlob, 'הסכם-חתום.pdf');
+    const res = await fetch('https://tmpfiles.org/api/v1/upload', {
+      method: 'POST',
+      body: fd
+    });
+    const json = await res.json();
+    // tmpfiles returns a viewer-page URL; convert to the direct download URL
+    return json.data.url.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+  }
+
   async function confirmSign(){
     hideErrors();
 
@@ -627,7 +667,7 @@
 
     const confirmBtn = document.getElementById('confirmBtn');
     confirmBtn.disabled = true;
-    confirmBtn.textContent = 'שולח...';
+    confirmBtn.textContent = 'מכין PDF...';
 
     // lock the form
     document.querySelectorAll('input').forEach(i => i.setAttribute('readonly','readonly'));
@@ -640,9 +680,15 @@
     });
 
     try{
+      const pdfBlob = await generateContractPdf();
+
+      confirmBtn.textContent = 'מעלה ושולח...';
+      const pdfLink = await uploadPdfAndGetLink(pdfBlob);
+
       const fd = new FormData();
       fd.append('access_key', WEB3FORMS_KEY);
       fd.append('subject', 'Signed contract - ' + (data.clientBusiness || data.clientSignName || 'new client'));
+      fd.append('pdf_link', pdfLink);
       Object.entries(data).forEach(([k,v]) => fd.append(k, v));
 
       let sendOk = true;
@@ -659,7 +705,7 @@
       if(!sendOk) throw new Error('send failed');
 
       confirmBtn.textContent = 'ההסכם נחתם ונשלח ✓';
-      document.getElementById('signedBanner').textContent = '✓ ההסכם נחתם ונשלחה הודעה אוטומטית לספק. שימו לב: מומלץ ללקוח להוריד ולשלוח גם עותק PDF (כפתור למטה), כדי להבטיח שכל הפרטים בעברית יגיעו בצורה תקינה.';
+      document.getElementById('signedBanner').textContent = '✓ ההסכם נחתם. קישור להורדת ה-PDF המלא נשלח אוטומטית לשיר\'ס בוטיק קונדיטוריה במייל (בתוקף למספר שעות — כדאי לשמור בהקדם).';
       document.getElementById('signedBanner').style.display = 'block';
       document.getElementById('signedBanner').scrollIntoView({behavior:'smooth'});
     }catch(err){
