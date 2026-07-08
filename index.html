@@ -657,7 +657,7 @@
       fd.append('from_name', data.clientBusiness || data.clientSignName || 'לקוח חדש');
       Object.entries(data).forEach(([k,v]) => fd.append(k, v));
       fd.append('attachment', supplierBlob, 'חתימת-ספק.png');
-      fd.append('attachment', clientBlob, 'חתימת-לקוח.png');
+      fd.append('attachment2', clientBlob, 'חתימת-לקוח.png');
 
       const res = await fetch('https://api.web3forms.com/submit', {
         method: 'POST',
@@ -665,7 +665,7 @@
       });
       const json = await res.json().catch(() => ({}));
 
-      if(!res.ok || json.success !== true) throw new Error('send failed');
+      if(res.status !== 200 || json.success === false) throw new Error('send failed');
 
       confirmBtn.textContent = 'ההסכם נחתם ונשלח ✓';
       document.getElementById('signedBanner').style.display = 'block';
