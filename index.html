@@ -553,6 +553,15 @@
   document.getElementById('confirmBtn').addEventListener('click', confirmSign);
 
   const SUPPLIER_EMAIL = 'shirs.bou@gmail.com';
+  const WEB3FORMS_KEY = 'f09891d9-0ea4-453c-9367-3ddb5eeb0bcb';
+
+  function canvasToBlob(canvas){
+    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+  }
+
+  function imgToBlob(img){
+    return fetch(img.src).then(r => r.blob());
+  }
 
   function validateRequiredFields(){
     const missing = [];
@@ -583,14 +592,6 @@
     document.getElementById('errorBanner').style.display = 'none';
   }
 
-  function canvasToBlob(canvas){
-    return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
-  }
-
-  function imgToBlob(img){
-    return fetch(img.src).then(r => r.blob());
-  }
-
   function openMailtoFallback(data){
     const subject = 'הסכם חתום — ' + (data.clientBusiness || data.clientSignName || 'לקוח חדש');
     const bodyLines = [
@@ -606,7 +607,7 @@
       '',
       'חתימה: ' + (data.clientSignName || '') + ', תאריך ' + (data.clientDate || ''),
       '',
-      'שימו לב: השליחה האוטומטית נכשלה, לכן נפתחה הודעת מייל ידנית. נא לצרף את קובץ חתימת הלקוח שירד, ולשלוח.'
+      'השליחה האוטומטית נכשלה, לכן נפתחה הודעת מייל ידנית. קובץ חתימת הלקוח הורד אוטומטית — נא לצרף אותו ולשלוח.'
     ];
     const link = document.createElement('a');
     link.download = 'חתימת-לקוח.png';
@@ -651,20 +652,20 @@
       const clientBlob = await canvasToBlob(document.getElementById('padClient'));
 
       const fd = new FormData();
-      fd.append('_subject', 'הסכם חתום — ' + (data.clientBusiness || data.clientSignName || 'לקוח חדש'));
-      fd.append('_template', 'table');
-      fd.append('_captcha', 'false');
+      fd.append('access_key', WEB3FORMS_KEY);
+      fd.append('subject', 'הסכם חתום — ' + (data.clientBusiness || data.clientSignName || 'לקוח חדש'));
+      fd.append('from_name', data.clientBusiness || data.clientSignName || 'לקוח חדש');
       Object.entries(data).forEach(([k,v]) => fd.append(k, v));
-      fd.append('attachment-1', supplierBlob, 'חתימת-ספק.png');
-      fd.append('attachment-2', clientBlob, 'חתימת-לקוח.png');
+      fd.append('attachment', supplierBlob, 'חתימת-ספק.png');
+      fd.append('attachment', clientBlob, 'חתימת-לקוח.png');
 
-      const res = await fetch('https://formsubmit.co/ajax/' + SUPPLIER_EMAIL, {
+      const res = await fetch('https://api.web3forms.com/submit', {
         method: 'POST',
         body: fd
       });
       const json = await res.json().catch(() => ({}));
 
-      if(!res.ok || json.success === 'false' || json.success === false) throw new Error('send failed');
+      if(!res.ok || json.success !== true) throw new Error('send failed');
 
       confirmBtn.textContent = 'ההסכם נחתם ונשלח ✓';
       document.getElementById('signedBanner').style.display = 'block';
