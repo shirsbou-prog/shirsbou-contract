@@ -624,19 +624,32 @@
     const prevDisplay = toHide.map(el => el.style.display);
     toHide.forEach(el => el.style.display = 'none');
 
+    const prevScroll = window.scrollY;
+    window.scrollTo(0, 0);
+    await new Promise(r => setTimeout(r, 50));
+
     try{
       const worker = html2pdf()
         .set({
           margin: 10,
           filename: 'הסכם-חתום.pdf',
-          html2canvas: { scale: 2, useCORS: true },
-          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          html2canvas: {
+            scale: 2,
+            useCORS: true,
+            scrollX: 0,
+            scrollY: 0,
+            windowWidth: document.documentElement.scrollWidth,
+            windowHeight: wrap.scrollHeight
+          },
+          jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+          pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
         })
         .from(wrap);
       const pdfBlob = await worker.outputPdf('blob');
       return pdfBlob;
     } finally {
       toHide.forEach((el, i) => el.style.display = prevDisplay[i]);
+      window.scrollTo(0, prevScroll);
     }
   }
 
